@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "sourceMap": false,
+    "declaration": false,
+    "noEmit": false,
+    "removeComments": true,
+    // nest build deletes dist before compiling; incremental caching would then
+    // report "up to date" and emit nothing, so it is disabled for builds.
+    "incremental": false,
+    // Pin rootDir to src so the build emits dist/main.js and dist/worker.js.
+    // (prisma/seed.ts is excluded below and runs through ts-node instead.)
+    "rootDir": "./src"
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "test", "prisma", "**/*.spec.ts"]
+}

@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Favicon Preview - AI Career Platform</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: #e2e8f0;
+      padding: 40px 20px;
+      min-height: 100vh;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    
+    h1 {
+      text-align: center;
+      margin-bottom: 10px;
+      color: #c7d2fe;
+      font-size: 2.5rem;
+    }
+    
+    .subtitle {
+      text-align: center;
+      margin-bottom: 50px;
+      color: #94a3b8;
+      font-size: 1.1rem;
+    }
+    
+    .preview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 30px;
+      margin-bottom: 50px;
+    }
+    
+    .preview-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(199, 210, 254, 0.2);
+      border-radius: 16px;
+      padding: 30px;
+      text-align: center;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .preview-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 40px rgba(99, 102, 241, 0.2);
+    }
+    
+    .preview-card h3 {
+      color: #818cf8;
+      margin-bottom: 20px;
+      font-size: 1.3rem;
+    }
+    
+    .icon-display {
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 30px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 200px;
+    }
+    
+    .icon-display img {
+      max-width: 100%;
+      height: auto;
+    }
+    
+    .size-16 { width: 16px; height: 16px; }
+    .size-32 { width: 32px; height: 32px; }
+    .size-64 { width: 64px; height: 64px; }
+    .size-128 { width: 128px; height: 128px; }
+    .size-180 { width: 180px; height: 180px; }
+    .size-256 { width: 256px; height: 256px; }
+    
+    .info {
+      color: #cbd5e1;
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+    
+    .info strong {
+      color: #c7d2fe;
+    }
+    
+    .browser-demo {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(199, 210, 254, 0.15);
+      border-radius: 16px;
+      padding: 40px;
+      margin-top: 50px;
+    }
+    
+    .browser-demo h2 {
+      color: #c7d2fe;
+      margin-bottom: 30px;
+      text-align: center;
+      font-size: 2rem;
+    }
+    
+    .browser-tab {
+      background: #1e293b;
+      border-radius: 8px 8px 0 0;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      max-width: 400px;
+      margin: 0 auto 40px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+    
+    .browser-tab img {
+      width: 20px;
+      height: 20px;
+    }
+    
+    .browser-tab span {
+      color: #e2e8f0;
+      font-size: 14px;
+    }
+    
+    .specs {
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(129, 140, 248, 0.3);
+      border-radius: 12px;
+      padding: 25px;
+      margin-top: 40px;
+    }
+    
+    .specs h3 {
+      color: #818cf8;
+      margin-bottom: 15px;
+      font-size: 1.5rem;
+    }
+    
+    .specs ul {
+      list-style: none;
+      padding-left: 0;
+    }
+    
+    .specs li {
+      padding: 8px 0;
+      color: #cbd5e1;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .specs li:last-child {
+      border-bottom: none;
+    }
+    
+    .specs strong {
+      color: #c7d2fe;
+      display: inline-block;
+      min-width: 180px;
+    }
+    
+    code {
+      background: rgba(0, 0, 0, 0.3);
+      padding: 2px 8px;
+      border-radius: 4px;
+      color: #a5b4fc;
+      font-family: 'Courier New', monospace;
+      font-size: 0.9em;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎨 AI Career Platform Favicon</h1>
+    <p class="subtitle">Professional icon package matching your brand identity</p>
+    
+    <div class="preview-grid">
+      <!-- Main Favicon -->
+      <div class="preview-card">
+        <h3>Main Favicon (Scalable)</h3>
+        <div class="icon-display">
+          <img src="favicon.svg" alt="Main Favicon" class="size-256">
+        </div>
+        <div class="info">
+          <strong>File:</strong> favicon.svg<br>
+          <strong>Size:</strong> 512×512 (scalable)<br>
+          <strong>Usage:</strong> Modern browsers, bookmarks<br>
+          <strong>Format:</strong> SVG (Vector)
+        </div>
+      </div>
+      
+      <!-- Small Favicon -->
+      <div class="preview-card">
+        <h3>Tab Icon (32×32)</h3>
+        <div class="icon-display">
+          <img src="favicon-32x32.svg" alt="32x32 Favicon" class="size-128">
+        </div>
+        <div class="info">
+          <strong>File:</strong> favicon-32x32.svg<br>
+          <strong>Size:</strong> 32×32 (optimized)<br>
+          <strong>Usage:</strong> Browser tabs, small sizes<br>
+          <strong>Format:</strong> SVG (Simplified)
+        </div>
+      </div>
+      
+      <!-- Apple Touch Icon -->
+      <div class="preview-card">
+        <h3>iOS Home Screen</h3>
+        <div class="icon-display">
+          <img src="apple-touch-icon.svg" alt="Apple Touch Icon" class="size-180">
+        </div>
+        <div class="info">
+          <strong>File:</strong> apple-touch-icon.svg<br>
+          <strong>Size:</strong> 180×180 (rounded)<br>
+          <strong>Usage:</strong> iOS/macOS home screen<br>
+          <strong>Format:</strong> SVG (Rounded corners)
+        </div>
+      </div>
+    </div>
+    
+    <!-- Browser Tab Demo -->
+    <div class="browser-demo">
+      <h2>How It Looks in Browser Tabs</h2>
+      
+      <div class="browser-tab">
+        <img src="favicon-32x32.svg" alt="Favicon">
+        <span>AI Career Platform | Smart Job Search</span>
+      </div>
+      
+      <div style="text-align: center; color: #94a3b8; margin-top: 20px;">
+        ↑ This is how your favicon appears in Chrome, Firefox, Safari, and Edge
+      </div>
+    </div>
+    
+    <!-- Technical Specs -->
+    <div class="specs">
+      <h3>📋 Technical Specifications</h3>
+      <ul>
+        <li><strong>Design Concept:</strong> Professional briefcase with AI circuit patterns</li>
+        <li><strong>Color Scheme:</strong> Dark blue gradient (#0f172a → #312e81) with purple accents</li>
+        <li><strong>Total Package Size:</strong> ~5 KB (all files combined)</li>
+        <li><strong>Format:</strong> SVG (Scalable Vector Graphics)</li>
+        <li><strong>Browser Support:</strong> Chrome 80+, Firefox 41+, Safari 9+, Edge 79+</li>
+        <li><strong>PWA Ready:</strong> Includes <code>site.webmanifest</code> for progressive web apps</li>
+        <li><strong>Dark Mode:</strong> Theme colors for light/dark mode (#312e81 / #0f172a)</li>
+        <li><strong>Files Created:</strong> 4 files (favicon.svg, favicon-32x32.svg, apple-touch-icon.svg, site.webmanifest)</li>
+      </ul>
+    </div>
+    
+    <!-- Size Comparison -->
+    <div class="specs" style="margin-top: 30px;">
+      <h3>📐 Size Preview (All from scalable SVG)</h3>
+      <div style="display: flex; align-items: center; gap: 20px; flex-wrap: wrap; justify-content: center; margin-top: 20px;">
+        <div style="text-align: center;">
+          <img src="favicon.svg" alt="16px" class="size-16">
+          <div style="color: #94a3b8; font-size: 0.8rem; margin-top: 5px;">16×16</div>
+        </div>
+        <div style="text-align: center;">
+          <img src="favicon.svg" alt="32px" class="size-32">
+          <div style="color: #94a3b8; font-size: 0.8rem; margin-top: 5px;">32×32</div>
+        </div>
+        <div style="text-align: center;">
+          <img src="favicon.svg" alt="64px" class="size-64">
+          <div style="color: #94a3b8; font-size: 0.8rem; margin-top: 5px;">64×64</div>
+        </div>
+        <div style="text-align: center;">
+          <img src="favicon.svg" alt="128px" class="size-128">
+          <div style="color: #94a3b8; font-size: 0.8rem; margin-top: 5px;">128×128</div>
+        </div>
+      </div>
+      <div style="text-align: center; color: #94a3b8; margin-top: 20px; font-style: italic;">
+        Same file, perfect at any size! ✨
+      </div>
+    </div>
+  </div>
+</body>
+</html>

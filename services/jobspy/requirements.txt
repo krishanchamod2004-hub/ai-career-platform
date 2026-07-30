@@ -1,0 +1,9 @@
+# JobSpy sidecar service — pinned for reproducible installs.
+#
+# NOTE: requires Python 3.10–3.13. Python 3.14 has no numpy/pandas wheels for
+# this pin set and falls back to a source build (needs MSVC). This repo installs
+# a local CPython 3.12 at .local/python312 — see README.md.
+python-jobspy==1.1.82
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic-settings==2.7.1

@@ -1,0 +1,202 @@
+# =============================================================================
+# AI CAREER PLATFORM - GIT IGNORE
+# =============================================================================
+
+# --- Dependencies ------------------------------------------------------------
+node_modules/
+.pnpm-store/
+.pnpm-debug.log
+bower_components/
+
+# --- Build Outputs -----------------------------------------------------------
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+.turbo/
+
+# Next.js specific
+.next/
+out/
+next-env.d.ts
+
+# NestJS specific
+dist/
+dist-ssr/
+
+# Prisma generated client (regenerated on install)
+# Uncomment if you want to track it:
+# !apps/api/node_modules/.prisma/
+# !apps/api/node_modules/@prisma/
+
+# --- Environment Variables ---------------------------------------------------
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+*.env.backup
+
+# Keep example files
+!.env.example
+!.env.example.*
+!apps/*/.env.example
+
+# --- Logs --------------------------------------------------------------------
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+api-dev.log
+web-dev.log
+jobspy-dev.log
+jobspy-dev-err.log
+
+# --- Database ----------------------------------------------------------------
+# Prisma
+apps/api/prisma/dev.db
+apps/api/prisma/dev.db-journal
+apps/api/prisma/migrations/dev.db
+*.db
+*.db-journal
+
+# PostgreSQL local data
+.local/pgdata/
+.local/pg.log
+.local/pgpass.txt
+
+# --- Uploaded User Files -----------------------------------------------------
+# Local-disk MVP storage (never commit user data)
+apps/api/uploads/
+uploads/
+*.resume.*
+
+# --- Development Services & Tools --------------------------------------------
+# Local PostgreSQL portable installation
+.local/pgsql/
+.local/pgsql.zip
+.local/python312/
+.local/redis/
+.local/*.zip
+
+# Dev services management
+.dev/
+.dev/pgsql/
+.dev/pgsql.zip
+.dev/*.zip
+.dev/*.log
+.dev/*.pid
+.dev/*.status
+
+# --- Testing -----------------------------------------------------------------
+coverage/
+.nyc_output/
+*.lcov
+test-results/
+playwright-report/
+
+# --- IDE & Editor ------------------------------------------------------------
+# VSCode
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+!.vscode/launch.json.example
+.vscode/settings.json
+.history/
+
+# JetBrains IDEs
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# --- Operating System --------------------------------------------------------
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.directory
+.Trash-*
+
+# --- Docker ------------------------------------------------------------------
+docker-compose.override.yml
+.dockerignore.local
+
+# --- Cache & Temp Files ------------------------------------------------------
+.cache/
+.temp/
+.tmp/
+*.tmp
+.eslintcache
+.stylelintcache
+*.tgz
+*.zip
+
+# --- Security & Secrets ------------------------------------------------------
+*.pem
+*.key
+*.cert
+*.p12
+*.pfx
+.secrets/
+secrets/
+credentials.json
+service-account.json
+
+# --- Misc --------------------------------------------------------------------
+.husky/_/
+
+# Package manager locks (keep pnpm-lock.yaml for consistency)
+# Uncomment if using different package managers:
+# package-lock.json
+# yarn.lock
+
+# pnpm-lock.yaml should be committed for reproducible builds
+# but if it's causing issues, uncomment:
+# pnpm-lock.yaml
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Optional: Ignore large static assets during development
+# public/videos/
+# public/large-assets/
+
+# Storybook
+storybook-static/
+.storybook/dist/
+
+# =============================================================================
+# END OF .gitignore
+# =============================================================================

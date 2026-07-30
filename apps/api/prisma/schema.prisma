@@ -1,0 +1,796 @@
+// Prisma schema for AI Career Platform
+// Phase 1 models: User, Profile, RefreshToken, EmailVerificationToken, PasswordResetToken
+// Phase 2 models: Company, JobSource, Job, SavedJob, JobAlert, Application, ApplicationEvent,
+//                 Notification, Subscription, ScraperRun, ScraperLog, SystemLog, DailyStat
+// Future phases will add: Resume, Skill graph, Interview sessions.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum AuthProvider {
+  LOCAL
+  GOOGLE
+  GITHUB
+}
+
+enum JobType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERNSHIP
+  FREELANCE
+}
+
+enum WorkLocationType {
+  REMOTE
+  HYBRID
+  ONSITE
+}
+
+enum ExperienceLevel {
+  INTERNSHIP
+  ENTRY
+  JUNIOR
+  MID
+  SENIOR
+  LEAD
+  PRINCIPAL
+  EXECUTIVE
+}
+
+enum SalaryPeriod {
+  HOURLY
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+enum JobStatus {
+  ACTIVE
+  EXPIRED
+  FILLED
+  ARCHIVED
+}
+
+enum JobSourceType {
+  GREENHOUSE
+  LEVER
+  REMOTEOK
+  MANUAL
+  // Aggregated boards fetched through the JobSpy sidecar (services/jobspy).
+  // These are blocking-prone and require proxies at volume, unlike the ATS
+  // APIs above — which is why they are separate source rows with their own
+  // cron cadence and failure counters.
+  LINKEDIN
+  INDEED
+  GLASSDOOR
+  ZIPRECRUITER
+}
+
+enum ScraperRunStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+enum ScraperTrigger {
+  CRON
+  MANUAL
+  BACKFILL
+}
+
+enum LogLevel {
+  DEBUG
+  INFO
+  WARN
+  ERROR
+}
+
+enum ApplicationStatus {
+  SAVED
+  APPLIED
+  INTERVIEW
+  OFFER
+  REJECTED
+}
+
+enum AlertFrequency {
+  INSTANT
+  DAILY
+  WEEKLY
+}
+
+enum NotificationType {
+  NEW_MATCHING_JOBS
+  JOB_ALERT_DIGEST
+  APPLICATION_REMINDER
+  SYSTEM
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum PlanTier {
+  FREE
+  PRO
+  PREMIUM
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+/// Letter grade derived from JobEvaluation.score. Five buckets so the 1.0-5.0
+/// scale maps cleanly (A >= 4.5, B >= 3.5, C >= 2.5, D >= 1.5, else F); there is
+/// deliberately no E, matching the conventional A-F scale.
+enum EvaluationGrade {
+  A
+  B
+  C
+  D
+  F
+}
+
+/// Which LLM vendor produced an evaluation. The user's API key is supplied
+/// per-request and never persisted, so only the vendor name is recorded.
+enum AiProvider {
+  ANTHROPIC
+  OPENAI
+}
+
+// ---------------------------------------------------------------------------
+// Identity (Phase 1)
+// ---------------------------------------------------------------------------
+
+model User {
+  id              String       @id @default(uuid())
+  email           String       @unique
+  passwordHash    String?      @map("password_hash")
+  name            String
+  role            UserRole     @default(USER)
+  authProvider    AuthProvider @default(LOCAL) @map("auth_provider")
+  isEmailVerified Boolean      @default(false) @map("is_email_verified")
+  /// Google OAuth 2.0 subject identifier (sub claim from id_token).
+  googleId        String?      @unique @map("google_id")
+  avatarUrl       String?      @map("avatar_url")
+  /// Touched (throttled) on authenticated requests â€” powers "active users" analytics.
+  lastActiveAt    DateTime?    @map("last_active_at")
+  /// Tracks whether the user has completed the onboarding product tour.
+  hasCompletedOnboarding Boolean @default(false) @map("has_completed_onboarding")
+
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  profile                 Profile?
+  refreshTokens           RefreshToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  passwordResetTokens     PasswordResetToken[]
+  savedJobs               SavedJob[]
+  jobAlerts               JobAlert[]
+  applications            Application[]
+  notifications           Notification[]
+  subscription            Subscription?
+  jobEvaluations          JobEvaluation[]
+  resumes                 Resume[]
+  atsScores               AtsScore[]
+
+  @@index([lastActiveAt])
+  @@map("users")
+}
+
+model Profile {
+  id                 String   @id @default(uuid())
+  userId             String   @unique @map("user_id")
+  headline           String?
+  bio                String?
+  skills             String[] @default([])
+  yearsOfExperience  Int?     @map("years_of_experience")
+  resumeUrl          String?  @map("resume_url")
+  portfolioUrl       String?  @map("portfolio_url")
+  githubUrl          String?  @map("github_url")
+  linkedinUrl        String?  @map("linkedin_url")
+  salaryExpectation  Int?     @map("salary_expectation")
+  preferredLocations String[] @default([]) @map("preferred_locations")
+  preferredJobTypes  String[] @default([]) @map("preferred_job_types")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+/// Represents a single refresh-token session. One row per active login/device,
+/// which enables "session management" (list/revoke sessions) in later phases.
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  userAgent String?   @map("user_agent")
+  ipAddress String?   @map("ip_address")
+  revokedAt DateTime? @map("revoked_at")
+  expiresAt DateTime  @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("email_verification_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Job system (Phase 2)
+// ---------------------------------------------------------------------------
+
+model Company {
+  id           String  @id @default(uuid())
+  /// Derived from the normalized company name â€” also the ingestion upsert key.
+  slug         String  @unique
+  name         String
+  description  String?
+  websiteUrl   String? @map("website_url")
+  logoUrl      String? @map("logo_url")
+  industry     String?
+  companySize  String? @map("company_size")
+  headquarters String?
+  linkedinUrl  String? @map("linkedin_url")
+  foundedYear  Int?    @map("founded_year")
+  isVerified   Boolean @default(false) @map("is_verified")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  jobs Job[]
+
+  @@index([name])
+  /// Company-name search shares the trigram strategy used for job titles.
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "companies_name_trgm_idx")
+  @@map("companies")
+}
+
+/// A configured ingestion source. Rows drive the scheduler: one repeatable
+/// BullMQ job per enabled source, using its own cron expression.
+model JobSource {
+  id                  String        @id @default(uuid())
+  slug                String        @unique
+  name                String
+  type                JobSourceType
+  /// Adapter-specific config, e.g. { "boards": ["stripe", "figma"] }.
+  config              Json          @default("{}")
+  isEnabled           Boolean       @default(true) @map("is_enabled")
+  cronExpression      String        @default("0 */6 * * *") @map("cron_expression")
+  requestsPerMinute   Int           @default(60) @map("requests_per_minute")
+  priority            Int           @default(0)
+  lastRunAt           DateTime?     @map("last_run_at")
+  lastSuccessAt       DateTime?     @map("last_success_at")
+  consecutiveFailures Int           @default(0) @map("consecutive_failures")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  jobs Job[]
+  runs ScraperRun[]
+  logs ScraperLog[]
+
+  @@index([isEnabled])
+  @@map("job_sources")
+}
+
+model Job {
+  id              String  @id @default(uuid())
+  slug            String  @unique
+  title           String
+  description     String
+  descriptionHtml String? @map("description_html")
+
+  companyId   String? @map("company_id")
+  sourceId    String? @map("source_id")
+  /// Stable identifier assigned by the upstream source (used for per-source upserts).
+  sourceJobId String? @map("source_job_id")
+  externalUrl String? @map("external_url")
+  applyUrl    String? @map("apply_url")
+
+  location String?
+  city     String?
+  region   String?
+  country  String?
+  isRemote Boolean @default(false) @map("is_remote")
+
+  workModel          WorkLocationType? @map("work_model")
+  jobType            JobType?          @map("job_type")
+  experienceLevel    ExperienceLevel?  @map("experience_level")
+  minYearsExperience Int?              @map("min_years_experience")
+
+  skills   String[] @default([])
+  benefits String[] @default([])
+
+  salaryMin       Int?          @map("salary_min")
+  salaryMax       Int?          @map("salary_max")
+  salaryCurrency  String?       @map("salary_currency")
+  salaryPeriod    SalaryPeriod? @map("salary_period")
+  salaryText      String?       @map("salary_text")
+  visaSponsorship Boolean?      @map("visa_sponsorship")
+
+  status    JobStatus @default(ACTIVE)
+  postedAt  DateTime? @map("posted_at")
+  expiresAt DateTime? @map("expires_at")
+  /// Until this timestamp the listing is only visible to plans with EARLY_JOB_ACCESS.
+  earlyAccessUntil DateTime? @map("early_access_until")
+
+  fetchedAt  DateTime @default(now()) @map("fetched_at")
+  /// Refreshed every time a scrape still sees the listing â€” drives staleness expiry.
+  lastSeenAt DateTime @default(now()) @map("last_seen_at")
+  /// Hash of normalized content; lets ingestion skip unchanged rows cheaply.
+  contentHash String  @map("content_hash")
+  /// Cross-source fingerprint (company + title + location) for deduplication.
+  dedupeKey   String  @unique @map("dedupe_key")
+
+  viewCount        Int @default(0) @map("view_count")
+  saveCount        Int @default(0) @map("save_count")
+  applicationCount Int @default(0) @map("application_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  company      Company?      @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  source       JobSource?    @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  savedJobs    SavedJob[]
+  applications Application[]
+  evaluations  JobEvaluation[]
+  atsScores    AtsScore[]
+
+  @@unique([sourceId, sourceJobId])
+  @@index([status, postedAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([companyId])
+  @@index([sourceId])
+  @@index([isRemote])
+  @@index([jobType])
+  @@index([experienceLevel])
+  @@index([salaryMax])
+  @@index([earlyAccessUntil])
+  @@index([lastSeenAt])
+  /// Keyword search runs case-insensitive substring matches on the title; a
+  /// trigram GIN index keeps those predicates index-backed (needs pg_trgm).
+  @@index([title(ops: raw("gin_trgm_ops"))], type: Gin, map: "jobs_title_trgm_idx")
+  /// Array containment for the skills filter.
+  @@index([skills], type: Gin, map: "jobs_skills_gin_idx")
+  @@map("jobs")
+}
+/// AI evaluation of one job description for one user.
+///
+/// Scores come from the user's own Claude/OpenAI key, which is supplied
+/// per-request and never persisted — hence `provider`/`model` for auditability
+/// but no credential columns anywhere in this table.
+///
+/// One row per (user, job): re-running an evaluation overwrites it, which keeps
+/// token spend bounded and gives the dashboard exactly one grade to render.
+model JobEvaluation {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  jobId  String @map("job_id")
+
+  /// 1.0-5.0 overall fit. A CHECK constraint enforces the range in Postgres
+  /// (see the migration) because a model returning 0 or 11 is a real failure
+  /// mode and must not reach the UI.
+  score Float
+  /// Derived from `score`; stored so lists can filter/sort by grade directly.
+  grade EvaluationGrade
+
+  /// Per-criterion breakdown, e.g.
+  /// { "skillsMatch": { "score": 4.5, "weight": 0.3, "notes": "..." } }
+  rubric    Json     @default("{}")
+  summary   String?
+  strengths String[] @default([])
+  gaps      String[] @default([])
+
+  provider AiProvider
+  /// Exact model id used, e.g. "claude-sonnet-4-20250514" or "gpt-4o-mini".
+  model            String
+  promptTokens     Int? @map("prompt_tokens")
+  completionTokens Int? @map("completion_tokens")
+  /// Wall-clock duration of the provider call, for cost/latency tracking.
+  durationMs       Int? @map("duration_ms")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job  Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, jobId])
+  /// "My best-scoring jobs" is the primary dashboard query.
+  @@index([userId, score(sort: Desc)])
+  @@index([jobId])
+  @@map("job_evaluations")
+}
+
+/// A user-uploaded resume. `content` is plain text extracted from the PDF at
+/// upload time so the ATS scorer never has to re-parse the file — the AI
+/// provider only ever sees text, not binary data. `fileUrl` is the original
+/// PDF, kept so the user can re-download what they uploaded; it is not
+/// re-parsed after upload.
+model Resume {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+
+  title     String
+  /// Raw text extracted from the PDF via pdf-parse. Never null on a row that
+  /// finished uploading — extraction failure fails the upload, not this field.
+  content   String
+  /// Path/URL to the stored original PDF, served by GET /resumes/:id/file.
+  fileUrl   String? @map("file_url")
+  /// One resume per user can be the default; enforced in ResumesService, not
+  /// a DB constraint, because "at most one true" needs application logic
+  /// (clearing the previous default) rather than a partial unique index that
+  /// would need a raw migration either way.
+  isDefault Boolean @default(false) @map("is_default")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  atsScores AtsScore[]
+
+  @@index([userId])
+  @@map("resumes")
+}
+
+/// One ATS match check: a specific resume graded against a specific job
+/// description. Kept separate from JobEvaluation (profile-vs-job) because this
+/// is resume-vs-job and has its own shape (missing keywords, ATS suggestions).
+model AtsScore {
+  id       String @id @default(uuid())
+  userId   String @map("user_id")
+  resumeId String @map("resume_id")
+  jobId    String @map("job_id")
+
+  /// 0-100 ATS match score, as returned by the model and clamped server-side.
+  score           Int
+  missingKeywords String[] @default([]) @map("missing_keywords")
+  suggestions     String?
+
+  provider AiProvider
+  model            String
+  promptTokens     Int? @map("prompt_tokens")
+  completionTokens Int? @map("completion_tokens")
+  durationMs       Int? @map("duration_ms")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resume Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  /// One stored score per (resume, job) pair; re-checking overwrites it, same
+  /// policy as JobEvaluation, so a re-run never silently duplicates rows.
+  @@unique([resumeId, jobId])
+  /// Backs both "recent checks" ordering and the monthly free-plan quota count
+  /// (rows for this user created since the start of the current calendar month).
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("ats_scores")
+}
+
+model SavedJob {
+  id     String  @id @default(uuid())
+  userId String  @map("user_id")
+  jobId  String  @map("job_id")
+  notes  String?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job  Job  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, jobId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("saved_jobs")
+}
+
+/// A stored search. The notification worker evaluates active alerts against
+/// newly ingested jobs and emits in-app/email notifications.
+model JobAlert {
+  id     String @id @default(uuid())
+  userId String @map("user_id")
+  name   String
+
+  keywords         String[]              @default([])
+  locations        String[]              @default([])
+  jobTypes         JobType[]             @default([]) @map("job_types")
+  workModels       WorkLocationType[]    @default([]) @map("work_models")
+  experienceLevels ExperienceLevel[]     @default([]) @map("experience_levels")
+  skills           String[]              @default([])
+  salaryMin        Int?                  @map("salary_min")
+  isRemoteOnly     Boolean               @default(false) @map("is_remote_only")
+  frequency        AlertFrequency        @default(DAILY)
+  channels         NotificationChannel[] @default([IN_APP])
+
+  isActive         Boolean   @default(true) @map("is_active")
+  lastSentAt       DateTime? @map("last_sent_at")
+  lastMatchedJobAt DateTime? @map("last_matched_job_at")
+  matchCount       Int       @default(0) @map("match_count")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isActive, frequency])
+  @@map("job_alerts")
+}
+
+model Application {
+  id     String            @id @default(uuid())
+  userId String            @map("user_id")
+  jobId  String?           @map("job_id")
+  status ApplicationStatus @default(SAVED)
+
+  /// Snapshots so the tracker stays readable if the source job is archived/deleted.
+  jobTitle    String  @map("job_title")
+  companyName String  @map("company_name")
+  jobUrl      String? @map("job_url")
+  location    String?
+  salaryNote  String? @map("salary_note")
+
+  resumeUrl   String? @map("resume_url")
+  coverLetter String? @map("cover_letter")
+  notes       String?
+
+  appliedAt      DateTime? @map("applied_at")
+  nextActionAt   DateTime? @map("next_action_at")
+  nextActionNote String?   @map("next_action_note")
+  /// Guards against re-sending the same follow-up reminder.
+  reminderSentAt DateTime? @map("reminder_sent_at")
+  boardOrder     Int       @default(0) @map("board_order")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user   User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  job    Job?               @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  events ApplicationEvent[]
+
+  @@unique([userId, jobId])
+  @@index([userId, status])
+  @@index([nextActionAt])
+  @@map("applications")
+}
+
+/// Immutable status-transition history â€” the basis for funnel analytics.
+model ApplicationEvent {
+  id            String             @id @default(uuid())
+  applicationId String             @map("application_id")
+  fromStatus    ApplicationStatus? @map("from_status")
+  toStatus      ApplicationStatus  @map("to_status")
+  note          String?
+  createdAt     DateTime           @default(now()) @map("created_at")
+
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, createdAt])
+  @@map("application_events")
+}
+
+model Notification {
+  id      String              @id @default(uuid())
+  userId  String              @map("user_id")
+  type    NotificationType
+  channel NotificationChannel @default(IN_APP)
+  status  NotificationStatus  @default(PENDING)
+  title   String
+  body    String
+  data    Json?
+  /// Idempotency key (e.g. `alert:<id>:2026-07-25`) so retries cannot duplicate sends.
+  dedupeKey String?           @unique @map("dedupe_key")
+  readAt    DateTime?         @map("read_at")
+  sentAt    DateTime?         @map("sent_at")
+  error     String?
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status])
+  @@map("notifications")
+}
+
+/// Subscription state. Provider columns stay null until a billing provider is
+/// wired up in a later phase â€” entitlement checks read `plan`/`status` only.
+model Subscription {
+  id     String             @id @default(uuid())
+  userId String             @unique @map("user_id")
+  plan   PlanTier           @default(FREE)
+  status SubscriptionStatus @default(ACTIVE)
+
+  currentPeriodStart DateTime? @map("current_period_start")
+  currentPeriodEnd   DateTime? @map("current_period_end")
+  cancelAtPeriodEnd  Boolean   @default(false) @map("cancel_at_period_end")
+  trialEndsAt        DateTime? @map("trial_ends_at")
+
+  provider               String? // e.g. "stripe" â€” reserved
+  externalCustomerId     String? @map("external_customer_id")
+  externalSubscriptionId String? @map("external_subscription_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([plan, status])
+  @@index([externalSubscriptionId])
+  @@map("subscriptions")
+}
+
+/// Idempotency ledger for billing webhooks. Lemon Squeezy retries a delivery
+/// until it gets a 2xx, so the same payload can arrive several times; without
+/// this a retry of `subscription_created` would re-extend the paid period.
+/// `eventId` is a SHA-256 of the raw request body: identical retries hash
+/// identically, while a genuine later update carries a new `updated_at` and so
+/// hashes differently. Rows are only written after successful processing, so a
+/// delivery that failed midway is still allowed to be retried.
+model BillingWebhookEvent {
+  id        String   @id @default(uuid())
+  provider  String
+  eventId   String   @map("event_id")
+  eventName String   @map("event_name")
+  /// Subscription/customer this event referred to — kept for support triage.
+  externalSubscriptionId String? @map("external_subscription_id")
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@unique([provider, eventId])
+  @@index([eventName, processedAt])
+  @@map("billing_webhook_events")
+}
+
+// ---------------------------------------------------------------------------
+// Scraper observability (Phase 2)
+// ---------------------------------------------------------------------------
+
+model ScraperRun {
+  id         String           @id @default(uuid())
+  sourceId   String           @map("source_id")
+  status     ScraperRunStatus @default(PENDING)
+  trigger    ScraperTrigger   @default(CRON)
+  queueJobId String?          @map("queue_job_id")
+
+  startedAt  DateTime  @default(now()) @map("started_at")
+  finishedAt DateTime? @map("finished_at")
+  durationMs Int?      @map("duration_ms")
+
+  jobsFound   Int @default(0) @map("jobs_found")
+  jobsCreated Int @default(0) @map("jobs_created")
+  jobsUpdated Int @default(0) @map("jobs_updated")
+  jobsSkipped Int @default(0) @map("jobs_skipped")
+  jobsFailed  Int @default(0) @map("jobs_failed")
+
+  errorMessage String? @map("error_message")
+  attempt      Int     @default(1)
+
+  source JobSource    @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  logs   ScraperLog[]
+
+  @@index([sourceId, startedAt(sort: Desc)])
+  @@index([status, startedAt(sort: Desc)])
+  @@map("scraper_runs")
+}
+
+model ScraperLog {
+  id       String   @id @default(uuid())
+  runId    String?  @map("run_id")
+  sourceId String?  @map("source_id")
+  level    LogLevel @default(INFO)
+  message  String
+  context  Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  run    ScraperRun? @relation(fields: [runId], references: [id], onDelete: Cascade)
+  source JobSource?  @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@index([runId])
+  @@index([level, createdAt(sort: Desc)])
+  @@map("scraper_logs")
+}
+
+/// Generic application-level log surfaced in the admin dashboard.
+model SystemLog {
+  id      String   @id @default(uuid())
+  level   LogLevel @default(INFO)
+  scope   String
+  message String
+  context Json?
+  userId  String?  @map("user_id")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([level, createdAt(sort: Desc)])
+  @@index([scope])
+  @@map("system_logs")
+}
+
+/// Pre-aggregated daily metrics, written by the maintenance worker so admin
+/// dashboards never run expensive scans over the whole jobs table.
+model DailyStat {
+  id   String   @id @default(uuid())
+  date DateTime @unique @db.Date
+
+  totalJobs         Int @default(0) @map("total_jobs")
+  activeJobs        Int @default(0) @map("active_jobs")
+  newJobs           Int @default(0) @map("new_jobs")
+  totalCompanies    Int @default(0) @map("total_companies")
+  newUsers          Int @default(0) @map("new_users")
+  activeUsers       Int @default(0) @map("active_users")
+  savedJobs         Int @default(0) @map("saved_jobs")
+  applications      Int @default(0)
+  scraperRuns       Int @default(0) @map("scraper_runs")
+  scraperFailures   Int @default(0) @map("scraper_failures")
+  notificationsSent Int @default(0) @map("notifications_sent")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("daily_stats")
+}
+

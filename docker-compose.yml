@@ -1,0 +1,193 @@
+name: ai-career-platform
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-career-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ai_career_platform
+    # Bound to loopback only: reachable from this host (e.g. `psql`, or Option B's
+    # host-run API process) but never from the public internet on a VPS, since
+    # 127.0.0.1 is not reachable from outside the machine regardless of firewall
+    # rules. Other containers reach this over the compose network as `postgres:5432`
+    # regardless of this mapping.
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: ai-career-redis
+    restart: unless-stopped
+    # Same rationale as postgres above: bound to loopback only, never reachable
+    # from outside this host. Other containers reach it as `redis:6379`.
+    ports:
+      - '127.0.0.1:6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # JobSpy sidecar: on-demand LinkedIn/Indeed/Glassdoor/ZipRecruiter search over
+  # HTTP, called by the `greenhouse`-style adapter in apps/api. It holds no
+  # database credentials and has no user model, so it is never published to the
+  # host — only the `api` and `worker` containers can reach it, as `jobspy:8000`.
+  jobspy:
+    build:
+      context: ./services/jobspy
+    container_name: ai-career-jobspy
+    restart: unless-stopped
+    expose:
+      - '8000'
+    environment:
+      JOBSPY_HOST: 0.0.0.0
+      JOBSPY_PORT: 8000
+      # Shared secret with api/worker's JOBSPY_API_TOKEN below — required in
+      # production; the service refuses to start without it unless
+      # JOBSPY_ALLOW_INSECURE=true (do not set that outside local experiments).
+      # Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      JOBSPY_API_TOKEN: ${JOBSPY_API_TOKEN:?Set JOBSPY_API_TOKEN in .env (32-byte hex string)}
+      JOBSPY_PROXIES: ${JOBSPY_PROXIES:-}
+      JOBSPY_DEFAULT_RESULTS_WANTED: ${JOBSPY_DEFAULT_RESULTS_WANTED:-25}
+      JOBSPY_MAX_RESULTS_WANTED: ${JOBSPY_MAX_RESULTS_WANTED:-100}
+      JOBSPY_MAX_CONCURRENCY: ${JOBSPY_MAX_CONCURRENCY:-2}
+      JOBSPY_REQUEST_TIMEOUT_SECONDS: ${JOBSPY_REQUEST_TIMEOUT_SECONDS:-180}
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:8000/health']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: ai-career-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      jobspy:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ai_career_platform?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET in .env}
+      JWT_ACCESS_EXPIRES_IN: 15m
+      REFRESH_TOKEN_TTL_DAYS: 30
+      # Public URLs — set these in .env to your real domains before deploying.
+      # Defaults below only work for local `docker compose up` on localhost.
+      WEB_URL: ${WEB_URL:-http://localhost:3000}
+      QUEUE_PREFIX: aicareer
+      # The API is a queue producer only; the worker service consumes and schedules.
+      RUN_WORKERS_IN_API: 'false'
+      ENABLE_SCHEDULER: 'false'
+      # JobSpy sidecar — resolved via the compose network, not localhost.
+      JOBSPY_SERVICE_URL: http://jobspy:8000
+      JOBSPY_API_TOKEN: ${JOBSPY_API_TOKEN:?Set JOBSPY_API_TOKEN in .env}
+      JOBSPY_TIMEOUT_MS: ${JOBSPY_TIMEOUT_MS:-200000}
+      # Billing (optional). Only the api service gets these: checkout creation and
+      # the webhook are both HTTP concerns, so the worker has no use for the keys
+      # and is deliberately left without them. Empty values are valid and mean
+      # "billing disabled" — /billing/checkout and /billing/webhook return 503.
+      LEMON_SQUEEZY_API_KEY: ${LEMON_SQUEEZY_API_KEY:-}
+      LEMON_SQUEEZY_STORE_ID: ${LEMON_SQUEEZY_STORE_ID:-}
+      LEMON_SQUEEZY_WEBHOOK_SECRET: ${LEMON_SQUEEZY_WEBHOOK_SECRET:-}
+      LEMON_SQUEEZY_VARIANT_ID_PRO: ${LEMON_SQUEEZY_VARIANT_ID_PRO:-}
+      LEMON_SQUEEZY_VARIANT_ID_PREMIUM: ${LEMON_SQUEEZY_VARIANT_ID_PREMIUM:-}
+    # Published to the host so local `docker compose up` still works as documented
+    # in README.md (curl localhost:4000/api/health). On a VPS, put a reverse
+    # proxy (nginx/Caddy) in front for TLS/domain routing instead of exposing
+    # this port directly to the internet — or remove this mapping and let the
+    # proxy talk to the container on the compose network instead.
+    ports:
+      - '4000:4000'
+    healthcheck:
+      test: ['CMD', 'node', '-e', "require('http').get('http://localhost:4000/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Background worker: runs the scraper, notification, and maintenance queues plus
+  # the cron scheduler. Scale with `docker compose up -d --scale worker=3` — BullMQ
+  # distributes jobs and the schedule stays single-registered in Redis.
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: ai-career-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      jobspy:
+        condition: service_healthy
+      api:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ai_career_platform?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET in .env}
+      WEB_URL: ${WEB_URL:-http://localhost:3000}
+      QUEUE_PREFIX: aicareer
+      ENABLE_SCHEDULER: 'true'
+      SCRAPER_CONCURRENCY: 2
+      NOTIFICATIONS_CONCURRENCY: 5
+      JOB_STALE_DAYS: 14
+      LOG_RETENTION_DAYS: 30
+      JOBSPY_SERVICE_URL: http://jobspy:8000
+      JOBSPY_API_TOKEN: ${JOBSPY_API_TOKEN:?Set JOBSPY_API_TOKEN in .env}
+      JOBSPY_TIMEOUT_MS: ${JOBSPY_TIMEOUT_MS:-200000}
+    # Migrations are applied by the api container's entrypoint; the worker only consumes.
+    entrypoint: ['node', 'dist/worker.js']
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Baked into the Next.js client bundle at build time — set this to your
+        # real API origin (e.g. https://api.yourdomain.com/api) in .env before
+        # building for production; it cannot be changed at container start.
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api}
+        # Public origin of the web app itself — used for canonical URLs, Open
+        # Graph/Twitter absolute URLs, sitemap.xml and robots.txt. Also baked in
+        # at build time; set to your real domain before building for production.
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+    container_name: ai-career-web
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+    # Published to the host so local `docker compose up` still works as documented
+    # (localhost:3000). On a VPS, front this with a reverse proxy for TLS/domain
+    # routing — the proxy can still reach this container via localhost:3000 or
+    # directly on the compose network.
+    ports:
+      - '3000:3000'
+
+volumes:
+  postgres_data:
+  redis_data:

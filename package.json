@@ -1,0 +1,32 @@
+{
+  "name": "ai-career-platform",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-powered career platform monorepo (web, api, mobile, shared)",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "services:up": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev-services.ps1 -Action start",
+    "services:down": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev-services.ps1 -Action stop",
+    "services:status": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev-services.ps1 -Action status",
+    "services:up:docker": "docker compose up -d postgres redis",
+    "services:down:docker": "docker compose down",
+    "predev": "pnpm run services:up",
+    "dev": "pnpm --parallel --filter=./apps/* run dev",
+    "dev:api": "pnpm --filter=@ai-career/api run dev",
+    "dev:web": "pnpm --filter=@ai-career/web run dev",
+    "build": "pnpm --filter=./apps/* run build",
+    "build:shared": "pnpm --filter=@ai-career/shared run build",
+    "lint": "pnpm -r run lint",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "prepare": "pnpm run build:shared"
+  },
+  "devDependencies": {
+    "prettier": "3.3.3",
+    "typescript": "5.6.3"
+  }
+}
