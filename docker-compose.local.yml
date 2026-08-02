@@ -1,0 +1,100 @@
+# =============================================================================
+# Docker Compose Configuration for LOCAL DEVELOPMENT
+# =============================================================================
+# This file runs ONLY the infrastructure services (postgres, redis, jobspy)
+# while you run the API and web apps directly on your host machine with hot reload.
+#
+# Usage:
+#   docker compose -f docker-compose.local.yml up -d
+#   docker compose -f docker-compose.local.yml down
+# =============================================================================
+
+name: ai-career-local
+
+services:
+  # =============================================================================
+  # PostgreSQL Database
+  # =============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-career-postgres-local
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ai_career_platform
+    ports:
+      # Exposed to host for local development
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - postgres_local_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - ai-career-local
+
+  # =============================================================================
+  # Redis Cache & Queue Broker
+  # =============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: ai-career-redis-local
+    restart: unless-stopped
+    ports:
+      # Exposed to host for local development
+      - '127.0.0.1:6379:6379'
+    volumes:
+      - redis_local_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - ai-career-local
+
+  # =============================================================================
+  # JobSpy Python Sidecar Service
+  # =============================================================================
+  # Scrapes LinkedIn/Indeed/Glassdoor/ZipRecruiter
+  # Required for job scraping functionality
+  jobspy:
+    build:
+      context: ./services/jobspy
+    container_name: ai-career-jobspy-local
+    restart: unless-stopped
+    ports:
+      # Exposed to host so your local API can reach it
+      - '127.0.0.1:8000:8000'
+    environment:
+      JOBSPY_HOST: 0.0.0.0
+      JOBSPY_PORT: 8000
+      # In local dev, we allow insecure mode (no token required)
+      # For production, always set JOBSPY_API_TOKEN and remove ALLOW_INSECURE
+      JOBSPY_ALLOW_INSECURE: ${JOBSPY_ALLOW_INSECURE:-true}
+      JOBSPY_API_TOKEN: ${JOBSPY_API_TOKEN:-dev-token-change-in-production}
+      JOBSPY_PROXIES: ${JOBSPY_PROXIES:-}
+      JOBSPY_DEFAULT_RESULTS_WANTED: ${JOBSPY_DEFAULT_RESULTS_WANTED:-25}
+      JOBSPY_MAX_RESULTS_WANTED: ${JOBSPY_MAX_RESULTS_WANTED:-100}
+      JOBSPY_MAX_CONCURRENCY: ${JOBSPY_MAX_CONCURRENCY:-2}
+      JOBSPY_REQUEST_TIMEOUT_SECONDS: ${JOBSPY_REQUEST_TIMEOUT_SECONDS:-180}
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:8000/health']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+    networks:
+      - ai-career-local
+
+volumes:
+  postgres_local_data:
+    driver: local
+  redis_local_data:
+    driver: local
+
+networks:
+  ai-career-local:
+    driver: bridge

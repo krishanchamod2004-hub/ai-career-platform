@@ -226,20 +226,211 @@ baked into the Next.js client bundle at build time, so changing it after the fac
 
 ### Option B — Local development
 
-```bash
-pnpm install
-docker compose up postgres redis jobspy -d   # infrastructure only (needs JOBSPY_API_TOKEN in .env)
-cp apps/api/.env.example apps/api/.env       # set JWT_ACCESS_SECRET + JOBSPY_API_TOKEN
-cp apps/web/.env.example apps/web/.env.local
-pnpm --filter=@ai-career/shared run build
-pnpm --filter=@ai-career/api run prisma:migrate:dev
-pnpm --filter=@ai-career/api run prisma:seed
-pnpm dev                                     # api + web
+For active development with hot reload and faster iteration cycles, run only the infrastructure
+(PostgreSQL, Redis, JobSpy) in Docker while running the API and web apps directly on your host.
+
+#### Prerequisites
+
+- **Node.js 20+** — [Download](https://nodejs.org/)
+- **pnpm 9+** — Install with `npm install -g pnpm`
+- **Docker Desktop** — [Download](https://www.docker.com/products/docker-desktop)
+
+#### Automated Setup (Recommended)
+
+Run the setup script for your platform:
+
+**Windows (PowerShell):**
+```powershell
+.\setup-local.ps1
 ```
 
-Run the worker in a second terminal (see below). On Windows, `pnpm --filter=@ai-career/web run build`
-fails in the `output: 'standalone'` trace step unless symlinks are permitted; set
-`NEXT_OUTPUT_STANDALONE=false` to verify a build locally (Docker builds are unaffected).
+**Linux/Mac (bash):**
+```bash
+chmod +x setup-local.sh
+./setup-local.sh
+```
+
+The script will:
+1. Check prerequisites (Node.js, pnpm, Docker)
+2. Install dependencies (`pnpm install`)
+3. Build the shared package
+4. Create environment files with generated secrets
+5. Start Docker infrastructure (PostgreSQL, Redis, JobSpy)
+6. Run database migrations
+7. Seed demo data (demo user + admin user)
+
+After completion, start development:
+```bash
+# Terminal 1 - Start API with hot reload
+pnpm --filter=@ai-career/api run dev
+
+# Terminal 2 - Start web with hot reload
+pnpm --filter=@ai-career/web run dev
+```
+
+Or start both in parallel:
+```bash
+pnpm dev
+```
+
+#### Manual Setup
+
+If you prefer to set up manually or the script fails:
+
+**1. Install dependencies:**
+```bash
+pnpm install
+```
+
+**2. Build shared package (required for API and web):**
+```bash
+pnpm --filter=@ai-career/shared run build
+```
+
+**3. Start infrastructure services:**
+
+Use the dedicated local development compose file that only runs infrastructure:
+```bash
+docker compose -f docker-compose.local.yml up -d
+```
+
+Or use the main compose file and specify services:
+```bash
+docker compose up postgres redis jobspy -d
+```
+
+**4. Configure API environment:**
+```bash
+cd apps/api
+cp .env.local .env
+```
+
+Edit `apps/api/.env` and set:
+- `JWT_ACCESS_SECRET` — Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+- `JOBSPY_API_TOKEN` — Can be anything in local dev with `JOBSPY_ALLOW_INSECURE=true`
+- Database and Redis URLs should work as-is with the default Docker Compose setup
+
+**5. Configure web environment:**
+```bash
+cd apps/web
+cp .env.local.template .env.local
+# Or: cp .env.example .env.local
+```
+
+**6. Run database migrations:**
+```bash
+pnpm --filter=@ai-career/api run prisma:migrate:deploy
+# Or for development migrations:
+pnpm --filter=@ai-career/api run prisma:migrate:dev
+```
+
+**7. Seed demo data (optional but recommended):**
+```bash
+pnpm --filter=@ai-career/api run prisma:seed
+```
+
+This creates:
+- `demo@aicareer.dev` / `Password123!` — Premium plan user
+- `admin@aicareer.dev` / `Password123!` — Admin user
+
+**8. Start development servers:**
+```bash
+# API (terminal 1)
+pnpm --filter=@ai-career/api run dev
+
+# Web (terminal 2)
+pnpm --filter=@ai-career/web run dev
+```
+
+#### Access the Application
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Web App | http://localhost:3000 | Next.js frontend |
+| API | http://localhost:4000/api | NestJS backend |
+| API Docs | http://localhost:4000/api/docs | Swagger/OpenAPI UI |
+| Database | localhost:5432 | PostgreSQL (user: postgres, pass: postgres) |
+| Redis | localhost:6379 | Redis cache & queue broker |
+| JobSpy | localhost:8000 | Python scraper service |
+
+#### Running the Worker Process
+
+For local development, the API can run queue consumers inline by setting `RUN_WORKERS_IN_API=true`
+in `apps/api/.env`. This is convenient but not recommended for production.
+
+To run a dedicated worker process:
+
+```bash
+# Set in apps/api/.env:
+RUN_WORKERS_IN_API=false
+ENABLE_SCHEDULER=false  # in API
+```
+
+Then in a separate terminal:
+```bash
+pnpm --filter=@ai-career/api run worker:dev
+```
+
+Or use a separate `.env` file for the worker with `ENABLE_SCHEDULER=true`.
+
+#### Troubleshooting
+
+**"Cannot connect to database"**
+- Check if PostgreSQL is running: `docker compose -f docker-compose.local.yml ps`
+- Verify `DATABASE_URL` in `apps/api/.env` matches your Docker setup
+- Try restarting: `docker compose -f docker-compose.local.yml restart postgres`
+
+**"Prisma CLI not found"**
+- Make sure you ran `pnpm install` from the project root
+- The Prisma CLI is installed as a dev dependency in `apps/api`
+- Run commands from project root with `pnpm --filter=@ai-career/api run prisma:...`
+
+**"Port already in use"**
+- Check what's using the port: `netstat -ano | findstr :4000` (Windows) or `lsof -i :4000` (Mac/Linux)
+- Kill the process or change the port in `apps/api/.env`
+
+**"Module not found: @ai-career/shared"**
+- Build the shared package: `pnpm --filter=@ai-career/shared run build`
+- Or run `pnpm run prepare` from the project root
+
+**"Invalid login credentials"**
+- Make sure you ran the seed: `pnpm --filter=@ai-career/api run prisma:seed`
+- Or register a new user via the UI or Swagger docs
+
+**Windows build issues**
+- On Windows, `pnpm --filter=@ai-career/web run build` may fail in the `output: 'standalone'` trace
+  step unless symlinks are permitted
+- Set `NEXT_OUTPUT_STANDALONE=false` in `apps/web/next.config.js` to test builds locally
+- Docker builds are unaffected by this issue
+
+#### Quick Reference Commands
+
+```bash
+# Start infrastructure only
+docker compose -f docker-compose.local.yml up -d
+
+# Stop infrastructure
+docker compose -f docker-compose.local.yml down
+
+# View logs
+docker compose -f docker-compose.local.yml logs -f
+
+# Reset database (WARNING: deletes all data)
+docker compose -f docker-compose.local.yml down -v
+docker compose -f docker-compose.local.yml up -d
+pnpm --filter=@ai-career/api run prisma:migrate:deploy
+pnpm --filter=@ai-career/api run prisma:seed
+
+# Rebuild shared package after changes
+pnpm --filter=@ai-career/shared run build
+
+# Run tests
+pnpm --filter=@ai-career/api run test
+pnpm --filter=@ai-career/web run type-check
+
+# View Prisma Studio (database GUI)
+pnpm --filter=@ai-career/api run prisma:studio
+```
 
 ## Worker Setup
 
