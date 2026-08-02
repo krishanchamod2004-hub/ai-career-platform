@@ -98,6 +98,36 @@ coverage/
 .nyc_output/
 *.lcov
 test-results/
+
+# --- Production Deployment ---------------------------------------------------
+# Backups (should be stored elsewhere, not in git)
+*.backup
+*.dump
+*.sql
+*.rdb
+backups/
+*.tar.gz
+restore_*.sh
+
+# Nginx generated configs (personalized for each deployment)
+nginx/sites-enabled/
+nginx/dhparam.pem
+
+# SSL certificates (never commit these!)
+*.pem
+*.crt
+*.key
+*.csr
+
+# Production logs
+/var/log/
+*.access.log
+*.error.log
+
+# Temporary deployment files
+temp/
+tmp/
+.tmp/
 playwright-report/
 
 # --- IDE & Editor ------------------------------------------------------------

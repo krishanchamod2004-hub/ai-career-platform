@@ -1,0 +1,300 @@
+# =============================================================================
+# Docker Compose - Production Configuration
+# =============================================================================
+# This file is optimized for VPS deployment with:
+# - No direct port exposure (use Nginx reverse proxy)
+# - Internal network isolation
+# - Health checks and restart policies
+# - Logging configuration
+# - Volume management
+#
+# Usage:
+#   docker compose -f docker-compose.prod.yml up -d
+#   docker compose -f docker-compose.prod.yml logs -f
+#   docker compose -f docker-compose.prod.yml down
+# =============================================================================
+
+version: '3.8'
+
+networks:
+  ai-career-network:
+    driver: bridge
+    name: ai-career-network
+
+volumes:
+  postgres_data:
+    name: ai-career-postgres-data
+  redis_data:
+    name: ai-career-redis-data
+
+services:
+  # ===========================================================================
+  # PostgreSQL Database
+  # ===========================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-career-postgres
+    restart: unless-stopped
+    networks:
+      - ai-career-network
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_career_platform}
+      # Performance tuning for production
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # No ports exposed - internal only
+    # Access via docker exec if needed: docker exec -it ai-career-postgres psql -U postgres -d ai_career_platform
+
+  # ===========================================================================
+  # Redis Cache & Queue Broker
+  # ===========================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: ai-career-redis
+    restart: unless-stopped
+    networks:
+      - ai-career-network
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save 60 1
+      --loglevel warning
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # No ports exposed - internal only
+
+  # ===========================================================================
+  # JobSpy Scraper Sidecar (Python FastAPI)
+  # ===========================================================================
+  jobspy:
+    build:
+      context: ./services/jobspy
+      dockerfile: Dockerfile
+    image: ai-career/jobspy:latest
+    container_name: ai-career-jobspy
+    restart: unless-stopped
+    networks:
+      - ai-career-network
+    environment:
+      JOBSPY_HOST: 0.0.0.0
+      JOBSPY_PORT: 8000
+      JOBSPY_API_TOKEN: ${JOBSPY_API_TOKEN:?JOBSPY_API_TOKEN must be set}
+      JOBSPY_PROXIES: ${JOBSPY_PROXIES:-}
+      JOBSPY_DEFAULT_RESULTS_WANTED: ${JOBSPY_DEFAULT_RESULTS_WANTED:-25}
+      JOBSPY_MAX_RESULTS_WANTED: ${JOBSPY_MAX_RESULTS_WANTED:-100}
+      JOBSPY_MAX_CONCURRENCY: ${JOBSPY_MAX_CONCURRENCY:-2}
+      JOBSPY_REQUEST_TIMEOUT_SECONDS: ${JOBSPY_REQUEST_TIMEOUT_SECONDS:-180}
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:8000/health']
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # No ports exposed - internal only
+
+  # ===========================================================================
+  # NestJS API
+  # ===========================================================================
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: ai-career/api:latest
+    container_name: ai-career-api
+    restart: unless-stopped
+    networks:
+      - ai-career-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      jobspy:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      # Database
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_career_platform}?schema=public
+      # Redis
+      REDIS_URL: redis://redis:6379
+      # JWT Authentication
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?JWT_ACCESS_SECRET must be set}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      REFRESH_TOKEN_TTL_DAYS: ${REFRESH_TOKEN_TTL_DAYS:-30}
+      # OAuth
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL}
+      # Public URLs
+      WEB_URL: ${WEB_URL:?WEB_URL must be set}
+      # Queue Configuration
+      QUEUE_PREFIX: ${QUEUE_PREFIX:-aicareer}
+      RUN_WORKERS_IN_API: 'false'
+      ENABLE_SCHEDULER: 'false'
+      # JobSpy
+      JOBSPY_SERVICE_URL: http://jobspy:8000
+      JOBSPY_API_TOKEN: ${JOBSPY_API_TOKEN}
+      JOBSPY_TIMEOUT_MS: ${JOBSPY_TIMEOUT_MS:-200000}
+      # Worker Settings
+      SCRAPER_MAX_CONSECUTIVE_FAILURES: ${SCRAPER_MAX_CONSECUTIVE_FAILURES:-10}
+      JOB_STALE_DAYS: ${JOB_STALE_DAYS:-14}
+      LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-30}
+      # AI Settings
+      AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-60000}
+      AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1200}
+      AI_MAX_ATTEMPTS: ${AI_MAX_ATTEMPTS:-2}
+      # Billing (optional)
+      LEMON_SQUEEZY_API_KEY: ${LEMON_SQUEEZY_API_KEY:-}
+      LEMON_SQUEEZY_STORE_ID: ${LEMON_SQUEEZY_STORE_ID:-}
+      LEMON_SQUEEZY_WEBHOOK_SECRET: ${LEMON_SQUEEZY_WEBHOOK_SECRET:-}
+      LEMON_SQUEEZY_VARIANT_ID_PRO: ${LEMON_SQUEEZY_VARIANT_ID_PRO:-}
+      LEMON_SQUEEZY_VARIANT_ID_PREMIUM: ${LEMON_SQUEEZY_VARIANT_ID_PREMIUM:-}
+    expose:
+      - "4000"
+    healthcheck:
+      test: ['CMD', 'node', '-e', "require('http').get('http://localhost:4000/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    labels:
+      - "com.ai-career.service=api"
+
+  # ===========================================================================
+  # Background Worker
+  # ===========================================================================
+  worker:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: ai-career/api:latest
+    container_name: ai-career-worker
+    restart: unless-stopped
+    networks:
+      - ai-career-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      jobspy:
+        condition: service_healthy
+      api:
+        condition: service_started
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_career_platform}?schema=public
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      WEB_URL: ${WEB_URL}
+      QUEUE_PREFIX: ${QUEUE_PREFIX:-aicareer}
+      ENABLE_SCHEDULER: 'true'
+      SCRAPER_CONCURRENCY: ${SCRAPER_CONCURRENCY:-2}
+      NOTIFICATIONS_CONCURRENCY: ${NOTIFICATIONS_CONCURRENCY:-5}
+      JOB_STALE_DAYS: ${JOB_STALE_DAYS:-14}
+      LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-30}
+      JOBSPY_SERVICE_URL: http://jobspy:8000
+      JOBSPY_API_TOKEN: ${JOBSPY_API_TOKEN}
+      JOBSPY_TIMEOUT_MS: ${JOBSPY_TIMEOUT_MS:-200000}
+      AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-60000}
+      AI_MAX_OUTPUT_TOKENS: ${AI_MAX_OUTPUT_TOKENS:-1200}
+      AI_MAX_ATTEMPTS: ${AI_MAX_ATTEMPTS:-2}
+      # Cron schedules (optional overrides)
+      CRON_DAILY_DIGEST: ${CRON_DAILY_DIGEST:-0 8 * * *}
+      CRON_WEEKLY_DIGEST: ${CRON_WEEKLY_DIGEST:-0 8 * * 1}
+      CRON_EXPIRE_JOBS: ${CRON_EXPIRE_JOBS:-0 2 * * *}
+      CRON_DAILY_STATS: ${CRON_DAILY_STATS:-0 1 * * *}
+      CRON_APPLICATION_REMINDERS: ${CRON_APPLICATION_REMINDERS:-0 9 * * *}
+      CRON_PRUNE_LOGS: ${CRON_PRUNE_LOGS:-0 3 * * 0}
+    entrypoint: ['dumb-init', '--']
+    command: ['node', 'dist/worker.js']
+    healthcheck:
+      test: ['CMD', 'pgrep', '-f', 'node.*worker.js']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    labels:
+      - "com.ai-career.service=worker"
+
+  # ===========================================================================
+  # Next.js Web Frontend
+  # ===========================================================================
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:?NEXT_PUBLIC_API_URL must be set}
+        NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:?NEXT_PUBLIC_SITE_URL must be set}
+    image: ai-career/web:latest
+    container_name: ai-career-web
+    restart: unless-stopped
+    networks:
+      - ai-career-network
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL}
+      PORT: 3000
+      HOSTNAME: "0.0.0.0"
+    expose:
+      - "3000"
+    healthcheck:
+      test: ['CMD', 'node', '-e', "require('http').get('http://localhost:3000/', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    labels:
+      - "com.ai-career.service=web"

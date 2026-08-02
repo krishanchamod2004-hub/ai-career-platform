@@ -1,0 +1,80 @@
+# =============================================================================
+# Docker Build Context Exclusions
+# Reduces build time and image size by excluding unnecessary files
+# =============================================================================
+
+# Node
+node_modules
+npm-debug.log
+yarn-error.log
+.pnpm-store
+
+# Next.js
+.next
+out
+
+# Build outputs
+dist
+build
+*.tsbuildinfo
+
+# Testing
+coverage
+.nyc_output
+junit.xml
+
+# Environment
+.env
+.env.local
+.env*.local
+.env.production
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDEs
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Documentation
+*.md
+!README.md
+docs
+
+# Logs
+logs
+*.log
+api-dev.log
+web-dev.log
+jobspy-dev*.log
+
+# Local development
+.dev
+.local
+temp
+
+# Deployment scripts (not needed in containers)
+deploy
+scripts
+
+# CI/CD
+.github
+.gitlab-ci.yml
+
+# Database
+*.db
+*.sqlite
+
+# Prisma migrations (copied separately)
+# apps/api/prisma/migrations
+
+# Docker
+docker-compose*.yml
+Dockerfile
+.dockerignore
