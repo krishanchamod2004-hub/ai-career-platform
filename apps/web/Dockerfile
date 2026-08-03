@@ -104,14 +104,27 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Copy the standalone output which includes everything needed to run
-# The standalone output is self-contained with all dependencies bundled
+# IMPORTANT: Next.js standalone output structure
+# When Next.js builds with output: 'standalone', it creates:
+#   .next/standalone/
+#   ├── server.js                    ← Entry point (at root!)
+#   ├── node_modules/                ← Bundled dependencies
+#   ├── package.json
+#   └── apps/web/                    ← Your app structure
+#       ├── .next/                   ← Needs static files copied here
+#       │   └── static/              ← Built assets
+#       ├── public/                  ← Static assets
+#       └── server.js                ← This is a symlink/reference, not the real file
+
+# Copy the standalone output (includes server.js at root and bundled node_modules)
 COPY --from=builder --chown=nextjs:nodejs /build/apps/web/.next/standalone ./
 
-# Copy static files (built assets)
+# Copy static files into the correct location within standalone structure
+# Next.js expects these at apps/web/.next/static (relative to where server.js runs)
 COPY --from=builder --chown=nextjs:nodejs /build/apps/web/.next/static ./apps/web/.next/static
 
-# Copy public folder (images, fonts, etc.)
+# Copy public folder into the correct location
+# Next.js expects these at apps/web/public (relative to where server.js runs)
 COPY --from=builder --chown=nextjs:nodejs /build/apps/web/public ./apps/web/public
 
 # Switch to non-root user
@@ -119,13 +132,13 @@ USER nextjs
 
 EXPOSE 3000
 
-# Health check endpoint
+# Health check endpoint - verify the app responds
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:3000/', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+    CMD curl -f http://localhost:3000/ || exit 1
 
 # Use dumb-init to properly handle signals (graceful shutdown)
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 # Start the Next.js server
-# The standalone output creates a server.js at apps/web/server.js
-CMD ["node", "apps/web/server.js"]
+# FIXED: server.js is at the ROOT of /app, not in apps/web/
+CMD ["node", "server.js"]
