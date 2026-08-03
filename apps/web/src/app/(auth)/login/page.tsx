@@ -64,7 +64,7 @@ function LoginForm() {
     if (accessToken) {
       // Fetch user profile with the access token
       authApi
-        .getMe(accessToken)
+        .me()
         .then((user) => {
           setAuth(user, accessToken);
           // Clean up URL and redirect to intended destination
