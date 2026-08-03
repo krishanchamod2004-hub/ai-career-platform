@@ -1,9 +1,9 @@
 # =============================================================================
-# Next.js 14 Production Dockerfile - Build Locally, Deploy Anywhere
+# Next.js 14 Production Dockerfile - Monorepo + Standalone
 # =============================================================================
-# This Dockerfile is designed to be built on your local machine and deployed
-# to any VPS without rebuilding. It eliminates all pnpm symlink issues by
-# bundling everything into a self-contained standalone output.
+# This Dockerfile properly handles Next.js standalone output in a pnpm monorepo.
+# The key issue: Next.js standalone may not properly trace all dependencies in
+# a monorepo setup, so we need to manually ensure all runtime deps are included.
 #
 # Build: docker build -f apps/web/Dockerfile -t your-registry/ai-career-web:latest .
 # Push:  docker push your-registry/ai-career-web:latest
@@ -77,12 +77,39 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
 # Build Next.js with standalone output
-# Standalone output includes all necessary files in .next/standalone
 WORKDIR /build/apps/web
 RUN pnpm run build
 
+# Verify standalone output was created
+RUN ls -la .next/standalone/ && echo "Standalone build complete"
+
 # -----------------------------------------------------------------------------
-# Stage 4: Runner - Minimal production runtime
+# Stage 4: Production Dependencies
+# -----------------------------------------------------------------------------
+FROM base AS prod-deps
+
+# Copy workspace configuration
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
+
+# Copy package.json files
+COPY packages/shared/package.json ./packages/shared/package.json
+COPY apps/web/package.json ./apps/web/package.json
+COPY apps/api/package.json ./apps/api/package.json
+
+# Copy shared package source (needed for prepare script)
+COPY packages/shared/src ./packages/shared/src
+COPY packages/shared/tsconfig.json ./packages/shared/tsconfig.json
+
+# Install ONLY production dependencies with --ignore-scripts to avoid prepare hook issues
+RUN --mount=type=cache,id=pnpm-store-web-prod,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --prod --ignore-scripts
+
+# Build the shared package in prod deps
+WORKDIR /build/packages/shared
+RUN pnpm run build
+
+# -----------------------------------------------------------------------------
+# Stage 5: Runner - Minimal production runtime
 # -----------------------------------------------------------------------------
 FROM node:20-alpine AS runner
 
@@ -104,27 +131,27 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# IMPORTANT: Next.js standalone output structure
-# When Next.js builds with output: 'standalone', it creates:
-#   .next/standalone/
-#   ├── server.js                    ← Entry point (at root!)
-#   ├── node_modules/                ← Bundled dependencies
-#   ├── package.json
-#   └── apps/web/                    ← Your app structure
-#       ├── .next/                   ← Needs static files copied here
-#       │   └── static/              ← Built assets
-#       ├── public/                  ← Static assets
-#       └── server.js                ← This is a symlink/reference, not the real file
+# CRITICAL FIX FOR MONOREPO:
+# Next.js standalone output may not include all dependencies from a monorepo.
+# We need to copy both the standalone output AND production node_modules.
 
-# Copy the standalone output (includes server.js at root and bundled node_modules)
-COPY --from=builder --chown=nextjs:nodejs /build/apps/web/.next/standalone ./
+# 1. Copy the standalone output (includes server.js and partial dependencies)
+COPY --from=builder --chown=nestjs:nodejs /build/apps/web/.next/standalone ./
 
-# Copy static files into the correct location within standalone structure
-# Next.js expects these at apps/web/.next/static (relative to where server.js runs)
+# 2. Copy production node_modules to ensure ALL runtime deps are available
+# This includes the shared package and all its dependencies
+COPY --from=prod-deps --chown=nextjs:nodejs /build/node_modules ./node_modules
+
+# 3. Copy the built shared package
+COPY --from=prod-deps --chown=nextjs:nodejs /build/packages/shared/dist ./packages/shared/dist
+COPY --from=prod-deps --chown=nextjs:nodejs /build/packages/shared/package.json ./packages/shared/package.json
+
+# 4. Copy static files into the correct location within standalone structure
+# Next.js expects these at apps/web/.next/static
 COPY --from=builder --chown=nextjs:nodejs /build/apps/web/.next/static ./apps/web/.next/static
 
-# Copy public folder into the correct location
-# Next.js expects these at apps/web/public (relative to where server.js runs)
+# 5. Copy public folder into the correct location
+# Next.js expects these at apps/web/public
 COPY --from=builder --chown=nextjs:nodejs /build/apps/web/public ./apps/web/public
 
 # Switch to non-root user
@@ -140,5 +167,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 # Start the Next.js server
-# FIXED: server.js is at the ROOT of /app, not in apps/web/
+# server.js is at the ROOT of /app in standalone output
 CMD ["node", "server.js"]
