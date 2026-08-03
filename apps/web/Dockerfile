@@ -32,16 +32,21 @@ RUN pnpm config set node-linker hoisted
 FROM base AS deps
 
 # Copy workspace configuration files
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
 
 # Copy all package.json files for dependency resolution
 COPY packages/shared/package.json ./packages/shared/package.json
 COPY apps/web/package.json ./apps/web/package.json
+COPY apps/api/package.json ./apps/api/package.json
+
+# Copy shared package source (needed for prepare script during install)
+COPY packages/shared/src ./packages/shared/src
+COPY packages/shared/tsconfig.json ./packages/shared/tsconfig.json
 
 # Install ALL dependencies (including devDependencies needed for build)
 # Using frozen-lockfile ensures reproducible builds
-RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --no-optional
+RUN --mount=type=cache,id=pnpm-store-web,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile
 
 # -----------------------------------------------------------------------------
 # Stage 3: Builder - Build shared package and Next.js application
@@ -50,7 +55,6 @@ FROM base AS builder
 
 # Copy installed dependencies from deps stage
 COPY --from=deps /build/node_modules ./node_modules
-COPY --from=deps /build/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=deps /build/apps/web/node_modules ./apps/web/node_modules
 
 # Copy workspace configuration
