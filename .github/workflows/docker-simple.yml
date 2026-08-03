@@ -1,0 +1,58 @@
+name: Build Docker Images (Simple)
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Convert repository name to lowercase
+        id: repo
+        run: echo "repo=$(echo ${{ github.repository }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Build and push API image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --file apps/api/Dockerfile \
+            --tag ghcr.io/${{ steps.repo.outputs.repo }}-api:latest \
+            --tag ghcr.io/${{ steps.repo.outputs.repo }}-api:${{ github.sha }} \
+            --push \
+            .
+
+      - name: Build and push Web image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --file apps/web/Dockerfile \
+            --build-arg NEXT_PUBLIC_API_URL=https://careersuite.cc/api \
+            --build-arg NEXT_PUBLIC_SITE_URL=https://careersuite.cc \
+            --tag ghcr.io/${{ steps.repo.outputs.repo }}-web:latest \
+            --tag ghcr.io/${{ steps.repo.outputs.repo }}-web:${{ github.sha }} \
+            --push \
+            .
+
+      - name: Build and push Worker image
+        run: |
+          docker buildx build \
+            --platform linux/amd64 \
+            --file apps/api/Dockerfile \
+            --tag ghcr.io/${{ steps.repo.outputs.repo }}-worker:latest \
+            --tag ghcr.io/${{ steps.repo.outputs.repo }}-worker:${{ github.sha }} \
+            --push \
+            .
