@@ -1,40 +1,20 @@
 # =============================================================================
-# Docker Build Context Exclusions
-# Reduces build time and image size by excluding unnecessary files
+# Docker Build Context Ignore
+# Minimizes context sent to Docker daemon for faster builds
 # =============================================================================
-
-# Node
-node_modules
-npm-debug.log
-yarn-error.log
-.pnpm-store
-
-# Next.js
-.next
-out
-
-# Build outputs
-dist
-build
-*.tsbuildinfo
-
-# Testing
-coverage
-.nyc_output
-junit.xml
-
-# Environment
-.env
-.env.local
-.env*.local
-.env.production
 
 # Git
 .git
 .gitignore
 .gitattributes
+.github
 
-# IDEs
+# Documentation
+*.md
+!README.md
+docs/
+
+# IDE
 .vscode
 .idea
 *.swp
@@ -42,39 +22,106 @@ junit.xml
 *~
 .DS_Store
 
-# Documentation
-*.md
-!README.md
-docs
+# Dependencies (will be installed fresh)
+node_modules
+**/node_modules
+.pnpm-store
+.npm
+.yarn
+
+# Build outputs (will be rebuilt)
+dist
+**/dist
+build
+**/build
+.next
+**/.next
+out
+**/out
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# Test files
+test
+tests
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+coverage
+.nyc_output
+jest.config.js
+jest.config.ts
+
+# Environment files
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.*.template
 
 # Logs
 logs
 *.log
-api-dev.log
-web-dev.log
-jobspy-dev*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
 
 # Local development
-.dev
 .local
+.dev
 temp
+tmp
+*.tmp
 
-# Deployment scripts (not needed in containers)
-deploy
-scripts
-
-# CI/CD
-.github
-.gitlab-ci.yml
+# Python
+__pycache__
+**/__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+.pytest_cache
+.mypy_cache
+.venv
+venv
+ENV
+env
 
 # Database
 *.db
 *.sqlite
-
-# Prisma migrations (copied separately)
-# apps/api/prisma/migrations
+*.sqlite3
+prisma/migrations/**/*.sql.REMOVED
 
 # Docker
+Dockerfile*
 docker-compose*.yml
-Dockerfile
 .dockerignore
+
+# Deployment
+scripts
+nginx
+deploy
+deployment
+
+# Uploads
+uploads
+upload
+
+# Cache
+.cache
+.parcel-cache
+.turbo
+
+# OS
+Thumbs.db
+Desktop.ini
+.AppleDouble
+.LSOverride
+
+# Backups
+*.bak
+*.backup
+backup
+backups
