@@ -1,8 +1,6 @@
 # =============================================================================
-# Next.js 14 Production Dockerfile - Manual node_modules (Working)
+# Next.js 14 Production Dockerfile - Monorepo (Manual node_modules)
 # =============================================================================
-# Standalone dependency tracing is broken in monorepos, so we manually copy
-# production node_modules instead of relying on Next.js's automatic tracing.
 
 FROM node:20-alpine AS base
 RUN apk add --no-cache libc6-compat dumb-init curl
@@ -68,13 +66,8 @@ ENV NODE_ENV=production
 WORKDIR /build/apps/web
 RUN pnpm run build
 
-# Debug
-RUN echo "=== Checking build output ===" && \
-    ls -la .next/standalone/ && \
-    ls -la .next/static/
-
 # -----------------------------------------------------------------------------
-# Production runtime - Manual assembly
+# Production runtime
 # -----------------------------------------------------------------------------
 FROM node:20-alpine AS runner
 RUN apk add --no-cache dumb-init curl
@@ -89,27 +82,16 @@ ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Copy standalone server (includes server.js)
+# Copy standalone server.js and traced dependencies
 COPY --from=builder --chown=nextjs:nodejs /build/apps/web/.next/standalone ./
 
 # CRITICAL: Manually copy production node_modules
-# Standalone tracing is broken in monorepos, so we do it ourselves
 COPY --from=prod-deps --chown=nextjs:nodejs /build/node_modules ./node_modules
 COPY --from=prod-deps --chown=nextjs:nodejs /build/packages/shared ./packages/shared
 
 # Copy static assets
 COPY --from=builder --chown=nextjs:nodejs /build/apps/web/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /build/apps/web/public ./public
-
-# Verify everything is in place
-RUN echo "=== Final verification ===" && \
-    echo "1. Server file:" && ls -la /app/server.js && \
-    echo "2. node_modules:" && ls -la /app/node_modules | head -10 && \
-    echo "3. next module:" && ls -la /app/node_modules/next && \
-    echo "4. shared package:" && ls -la /app/packages/shared/dist && \
-    echo "5. Static files:" && ls -la /app/.next/static | head -5 && \
-    echo "6. Public files:" && ls -la /app/public | head -5 && \
-    echo "=== All checks passed ==="
 
 USER nextjs
 EXPOSE 3000
