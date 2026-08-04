@@ -88,7 +88,10 @@ ENV HOSTNAME="0.0.0.0"
 # Copy standalone server.js and traced dependencies
 COPY --from=builder --chown=nextjs:nodejs /build/apps/web/.next/standalone ./
 
-# CRITICAL: Copy production node_modules (now without symlinks)
+# CRITICAL: Remove standalone's broken symlinked node_modules first
+RUN rm -rf /app/node_modules
+
+# Now copy our proper hoisted node_modules
 COPY --from=prod-deps --chown=nextjs:nodejs /build/node_modules ./node_modules
 COPY --from=prod-deps --chown=nextjs:nodejs /build/packages/shared ./packages/shared
 
