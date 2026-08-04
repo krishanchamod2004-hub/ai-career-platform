@@ -136,7 +136,7 @@ ENV HOSTNAME="0.0.0.0"
 # We need to copy both the standalone output AND production node_modules.
 
 # 1. Copy the standalone output (includes server.js and partial dependencies)
-COPY --from=builder --chown=nestjs:nodejs /build/apps/web/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /build/apps/web/.next/standalone ./
 
 # 2. Copy production node_modules to ensure ALL runtime deps are available
 # This includes the shared package and all its dependencies
