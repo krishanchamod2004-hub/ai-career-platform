@@ -11,10 +11,14 @@ WORKDIR /build
 # Install dependencies
 # -----------------------------------------------------------------------------
 FROM base AS deps
-COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY packages/shared/package.json ./packages/shared/package.json
 COPY apps/web/package.json ./apps/web/package.json
 COPY apps/api/package.json ./apps/api/package.json
+
+# Copy shared package source (needed for prepare script)
+COPY packages/shared/src ./packages/shared/src
+COPY packages/shared/tsconfig.json ./packages/shared/tsconfig.json
 
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
@@ -24,10 +28,9 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
 # -----------------------------------------------------------------------------
 FROM base AS builder
 COPY --from=deps /build/node_modules ./node_modules
-COPY --from=deps /build/packages ./packages
-COPY --from=deps /build/apps ./apps
+COPY --from=deps /build/apps/web/node_modules ./apps/web/node_modules
 
-COPY pnpm-workspace.yaml package.json ./
+COPY pnpm-workspace.yaml package.json tsconfig.base.json ./
 COPY packages/shared ./packages/shared
 RUN pnpm --filter=@ai-career/shared run build
 
