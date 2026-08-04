@@ -104,9 +104,9 @@ COPY packages/shared/tsconfig.json ./packages/shared/tsconfig.json
 RUN --mount=type=cache,id=pnpm-store-web-prod,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --prod --ignore-scripts
 
-# Build the shared package in prod deps
-WORKDIR /build/packages/shared
-RUN pnpm run build
+# Copy the already-built shared package from builder stage
+# (We can't build it here because TypeScript is a devDependency)
+COPY --from=builder /build/packages/shared/dist ./packages/shared/dist
 
 # -----------------------------------------------------------------------------
 # Stage 5: Runner - Minimal production runtime
