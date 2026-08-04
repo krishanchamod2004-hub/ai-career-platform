@@ -23,6 +23,7 @@ Resume tooling and semantic (embedding-based) matching are still deferred.
   React Query (incl. `useInfiniteQuery`), Zustand, React Hook Form, Zod, Axios
 - **API**: NestJS, PostgreSQL, Prisma, Redis, **BullMQ**, JWT auth, Swagger
 - **Workers**: BullMQ queues + repeatable (cron) jobs, separate worker process
+- **Auth**: **Google OAuth 2.0 only** (email/password authentication removed)
 - **Monorepo**: pnpm workspaces (`apps/*`, `packages/*`)
 - **DevOps**: Docker, Docker Compose (postgres, redis, api, **worker**, web)
 
@@ -730,6 +731,35 @@ pnpm --filter=@ai-career/api run prisma:seed
 ENABLE_SCHEDULER=true pnpm --filter=@ai-career/api run worker:dev
 # then: log in as admin@aicareer.dev, open /dashboard/admin, press "Run now" on a source
 ```
+
+## Deployment with GitHub Actions
+
+This project includes GitHub Actions workflows that automatically build and push Docker images to GitHub Container Registry (ghcr.io) when you push to main/master.
+
+**Complete deployment guide**: [DEPLOYMENT.md](./DEPLOYMENT.md)
+
+### Quick Overview
+
+1. **GitHub Actions** builds 3 images automatically:
+   - `ghcr.io/<username>/<repo>-api:latest`
+   - `ghcr.io/<username>/<repo>-web:latest`
+   - `ghcr.io/<username>/<repo>-worker:latest`
+
+2. **On your server**, pull and run with docker-compose:
+   ```bash
+   docker compose -f docker-compose.prod.yml pull
+   docker compose -f docker-compose.prod.yml up -d
+   ```
+
+3. **Set environment variables** in `.env` file on your server (Google OAuth, JWT secret, etc.)
+   - See [SECRETS.md](./SECRETS.md) for quick reference
+
+4. **Set up reverse proxy** (Caddy or Nginx) for HTTPS
+
+**Important**: 
+- Google OAuth credentials are provided at **runtime** (in .env), not baked into images
+- `NEXT_PUBLIC_API_URL` must be set as a GitHub Actions **Variable** before building web image
+- See [DEPLOYMENT.md](./DEPLOYMENT.md) for detailed instructions
 
 ## What's Next — Phase 3 Recommendation
 

@@ -1,26 +1,11 @@
 'use client';
 
 import * as React from 'react';
-import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
-import { z } from 'zod';
-import { isAxiosError } from 'axios';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { GoogleButton } from '@/components/auth/google-button';
 import { authApi } from '@/services/auth-api';
 import { useAuthStore } from '@/stores/auth-store';
-
-const loginSchema = z.object({
-  email: z.string().email('Enter a valid email address'),
-  password: z.string().min(1, 'Password is required'),
-});
-
-type LoginFormValues = z.infer<typeof loginSchema>;
 
 /**
  * Where to send the user after a successful login.
@@ -51,17 +36,13 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const setAuth = useAuthStore((s) => s.setAuth);
   const [serverError, setServerError] = React.useState<string | null>(null);
-
-  const {
-    register,
-    handleSubmit,
-    formState: { errors, isSubmitting },
-  } = useForm<LoginFormValues>({ resolver: zodResolver(loginSchema) });
+  const [isAuthenticating, setIsAuthenticating] = React.useState(false);
 
   // Handle Google OAuth callback with access token in query parameter
   React.useEffect(() => {
     const accessToken = searchParams.get('accessToken');
     if (accessToken) {
+      setIsAuthenticating(true);
       // Fetch user profile with the access token
       authApi
         .me()
@@ -74,85 +55,39 @@ function LoginForm() {
         .catch((error) => {
           console.error('Failed to fetch user after OAuth:', error);
           setServerError('Authentication failed. Please try again.');
+          setIsAuthenticating(false);
         });
     }
   }, [searchParams, setAuth, router]);
 
-  const onSubmit = async (values: LoginFormValues) => {
-    setServerError(null);
-    try {
-      const auth = await authApi.login(values);
-      setAuth(auth.user, auth.accessToken);
-      router.push(safeRedirect(searchParams.get('redirect')));
-    } catch (error) {
-      if (isAxiosError(error) && error.response?.data?.message) {
-        const message = error.response.data.message;
-        setServerError(Array.isArray(message) ? message.join(', ') : message);
-      } else if (isAxiosError(error) && !error.response) {
-        // No response at all: the API is unreachable, not a credential problem.
-        setServerError(
-          'Cannot reach the server. Make sure the API is running on ' +
-            (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api') +
-            '.',
-        );
-      } else {
-        setServerError('Invalid email or password.');
-      }
-    }
-  };
-
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
 
   return (
-    <Card className="glass-card">
-      <CardHeader>
+    <Card className="glass-card max-w-md mx-auto">
+      <CardHeader className="text-center">
         <CardTitle className="text-2xl">Welcome back</CardTitle>
-        <CardDescription>Log in to continue your job search.</CardDescription>
+        <CardDescription>Log in with Google to continue your job search.</CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" placeholder="jane@example.com" {...register('email')} />
-            {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+        {serverError && (
+          <div className="mb-4 p-3 rounded-md bg-destructive/10 border border-destructive">
+            <p className="text-sm text-destructive">{serverError}</p>
           </div>
+        )}
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="password">Password</Label>
-              <Link href="/forgot-password" className="text-sm text-primary hover:underline">
-                Forgot password?
-              </Link>
+        {isAuthenticating ? (
+          <div className="flex items-center justify-center py-4">
+            <div className="text-center space-y-2">
+              <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-primary border-r-transparent"></div>
+              <p className="text-sm text-muted-foreground">Authenticating...</p>
             </div>
-            <Input id="password" type="password" placeholder="••••••••" {...register('password')} />
-            {errors.password && (
-              <p className="text-sm text-destructive">{errors.password.message}</p>
-            )}
           </div>
-
-          {serverError && <p className="text-sm text-destructive">{serverError}</p>}
-
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? 'Logging in...' : 'Log in'}
-          </Button>
-        </form>
-
-        <div className="relative my-6">
-          <div className="absolute inset-0 flex items-center">
-            <span className="w-full border-t" />
-          </div>
-          <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
-          </div>
-        </div>
-
-        <GoogleButton apiUrl={apiUrl} />
+        ) : (
+          <GoogleButton apiUrl={apiUrl} />
+        )}
 
         <p className="mt-6 text-center text-sm text-muted-foreground">
-          Don&apos;t have an account?{' '}
-          <Link href="/register" className="font-medium text-primary hover:underline">
-            Sign up
-          </Link>
+          By continuing, you agree to our Terms of Service and Privacy Policy.
         </p>
       </CardContent>
     </Card>
@@ -162,15 +97,13 @@ function LoginForm() {
 /** Static shell shown while the client reads the query string. */
 function LoginCardShell() {
   return (
-    <Card className="glass-card">
-      <CardHeader>
+    <Card className="glass-card max-w-md mx-auto">
+      <CardHeader className="text-center">
         <CardTitle className="text-2xl">Welcome back</CardTitle>
-        <CardDescription>Log in to continue your job search.</CardDescription>
+        <CardDescription>Log in with Google to continue your job search.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="h-10 rounded-md bg-muted" />
-        <div className="h-10 rounded-md bg-muted" />
-        <div className="h-10 rounded-md bg-muted" />
+        <div className="h-12 rounded-md bg-muted animate-pulse" />
       </CardContent>
     </Card>
   );

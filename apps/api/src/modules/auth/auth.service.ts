@@ -1,23 +1,15 @@
 import {
-  ConflictException,
   Injectable,
   Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcryptjs';
 import { AuthProvider, UserRole, type AuthResponse, type User as SharedUser } from '@ai-career/shared';
 import { PrismaService } from '../prisma/prisma.service';
-import { MailService } from '../mail/mail.service';
-import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto } from './dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { TokenUtilService } from './token-util.service';
 import { GoogleProfile } from './strategies/google.strategy';
-
-const BCRYPT_ROUNDS = 12;
-const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000; // 24h
-const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000; // 1h
 
 export interface RefreshTokenBundle {
   refreshToken: string;
@@ -33,7 +25,6 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly config: ConfigService,
-    private readonly mailService: MailService,
     private readonly tokenUtil: TokenUtilService,
   ) {
     this.refreshTokenTtlDays = Number(this.config.get<string>('REFRESH_TOKEN_TTL_DAYS', '30'));
@@ -86,71 +77,6 @@ export class AuthService {
     });
 
     return { refreshToken: rawToken, expiresAt };
-  }
-
-  async register(
-    dto: RegisterDto,
-    context: { userAgent?: string; ipAddress?: string },
-  ): Promise<{ auth: AuthResponse; refreshToken: RefreshTokenBundle }> {
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
-    if (existing) {
-      throw new ConflictException('An account with this email already exists');
-    }
-
-    const passwordHash = await bcrypt.hash(dto.password, BCRYPT_ROUNDS);
-
-    const user = await this.prisma.user.create({
-      data: {
-        email: dto.email,
-        name: dto.name,
-        passwordHash,
-        authProvider: AuthProvider.LOCAL,
-        profile: { create: {} },
-      },
-    });
-
-    await this.issueEmailVerification(user.id, user.email, user.name);
-
-    const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role as UserRole };
-    const { token, expiresAt } = this.signAccessToken(payload);
-    const refreshToken = await this.createRefreshToken(user.id, context.userAgent, context.ipAddress);
-
-    return {
-      auth: {
-        user: this.toSharedUser(user),
-        accessToken: token,
-        accessTokenExpiresAt: expiresAt.toISOString(),
-      },
-      refreshToken,
-    };
-  }
-
-  async login(
-    dto: LoginDto,
-    context: { userAgent?: string; ipAddress?: string },
-  ): Promise<{ auth: AuthResponse; refreshToken: RefreshTokenBundle }> {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
-    if (!user || !user.passwordHash) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
-
-    const passwordMatches = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!passwordMatches) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
-
-    const payload: JwtPayload = { sub: user.id, email: user.email, role: user.role as UserRole };
-    const { token, expiresAt } = this.signAccessToken(payload);
-    const refreshToken = await this.createRefreshToken(user.id, context.userAgent, context.ipAddress);
-
-    return {
-      auth: {
-        user: this.toSharedUser(user),
-        accessToken: token,
-        accessTokenExpiresAt: expiresAt.toISOString(),
-      },
-      refreshToken,
-    };
   }
 
   async logout(rawRefreshToken: string | undefined): Promise<void> {
@@ -209,99 +135,10 @@ export class AuthService {
     return { ...this.toSharedUser(user), profile: user.profile };
   }
 
-  private async issueEmailVerification(userId: string, email: string, name: string): Promise<void> {
-    const rawToken = this.tokenUtil.generateOpaqueToken();
-    const tokenHash = this.tokenUtil.hashToken(rawToken);
-    const expiresAt = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS);
-
-    await this.prisma.emailVerificationToken.create({
-      data: { userId, tokenHash, expiresAt },
-    });
-
-    try {
-      await this.mailService.sendVerificationEmail(email, name, rawToken);
-    } catch (error) {
-      this.logger.error(`Failed to send verification email to ${email}`, error as Error);
-    }
-  }
-
-  async verifyEmail(dto: VerifyEmailDto): Promise<void> {
-    const tokenHash = this.tokenUtil.hashToken(dto.token);
-    const record = await this.prisma.emailVerificationToken.findUnique({ where: { tokenHash } });
-
-    if (!record || record.usedAt || record.expiresAt < new Date()) {
-      throw new UnauthorizedException('Invalid or expired verification token');
-    }
-
-    await this.prisma.$transaction([
-      this.prisma.emailVerificationToken.update({
-        where: { id: record.id },
-        data: { usedAt: new Date() },
-      }),
-      this.prisma.user.update({
-        where: { id: record.userId },
-        data: { isEmailVerified: true },
-      }),
-    ]);
-  }
-
-  async resendVerification(userId: string): Promise<void> {
-    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    if (user.isEmailVerified) return;
-    await this.issueEmailVerification(user.id, user.email, user.name);
-  }
-
-  async forgotPassword(dto: ForgotPasswordDto): Promise<void> {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
-    // Always resolve successfully to avoid leaking whether an email is registered.
-    if (!user) return;
-
-    const rawToken = this.tokenUtil.generateOpaqueToken();
-    const tokenHash = this.tokenUtil.hashToken(rawToken);
-    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
-
-    await this.prisma.passwordResetToken.create({
-      data: { userId: user.id, tokenHash, expiresAt },
-    });
-
-    try {
-      await this.mailService.sendPasswordResetEmail(user.email, user.name, rawToken);
-    } catch (error) {
-      this.logger.error(`Failed to send password reset email to ${user.email}`, error as Error);
-    }
-  }
-
-  async resetPassword(dto: ResetPasswordDto): Promise<void> {
-    const tokenHash = this.tokenUtil.hashToken(dto.token);
-    const record = await this.prisma.passwordResetToken.findUnique({ where: { tokenHash } });
-
-    if (!record || record.usedAt || record.expiresAt < new Date()) {
-      throw new UnauthorizedException('Invalid or expired reset token');
-    }
-
-    const passwordHash = await bcrypt.hash(dto.newPassword, BCRYPT_ROUNDS);
-
-    await this.prisma.$transaction([
-      this.prisma.passwordResetToken.update({
-        where: { id: record.id },
-        data: { usedAt: new Date() },
-      }),
-      this.prisma.user.update({
-        where: { id: record.userId },
-        data: { passwordHash },
-      }),
-      // Revoke all existing sessions on password change.
-      this.prisma.refreshToken.updateMany({
-        where: { userId: record.userId, revokedAt: null },
-        data: { revokedAt: new Date() },
-      }),
-    ]);
-  }
-
   /**
    * Find or create a user from Google OAuth profile.
    * - If googleId exists → return that user
-   * - If email exists with LOCAL provider → link the Google account
+   * - If email exists → link the Google account to existing user
    * - Otherwise → create a new user with GOOGLE provider
    */
   async findOrCreateGoogleUser(
@@ -320,7 +157,7 @@ export class AuthService {
       });
 
       if (user) {
-        // User exists with this email (LOCAL provider), link Google account
+        // User exists with this email, link Google account
         user = await this.prisma.user.update({
           where: { id: user.id },
           data: {
