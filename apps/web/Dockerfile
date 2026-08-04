@@ -147,12 +147,12 @@ COPY --from=prod-deps --chown=nextjs:nodejs /build/packages/shared/dist ./packag
 COPY --from=prod-deps --chown=nextjs:nodejs /build/packages/shared/package.json ./packages/shared/package.json
 
 # 4. Copy static files into the correct location within standalone structure
-# Next.js expects these at apps/web/.next/static
-COPY --from=builder --chown=nextjs:nodejs /build/apps/web/.next/static ./apps/web/.next/static
+# Next.js standalone expects static files at .next/static (relative to server.js)
+COPY --from=builder --chown=nextjs:nodejs /build/apps/web/.next/static ./.next/static
 
 # 5. Copy public folder into the correct location
-# Next.js expects these at apps/web/public
-COPY --from=builder --chown=nextjs:nodejs /build/apps/web/public ./apps/web/public
+# Next.js standalone expects public files at ./public (relative to server.js)
+COPY --from=builder --chown=nextjs:nodejs /build/apps/web/public ./public
 
 # Switch to non-root user
 USER nextjs
