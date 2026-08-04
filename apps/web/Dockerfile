@@ -1,5 +1,5 @@
 # =============================================================================
-# Next.js 14 Production Dockerfile - Monorepo (Manual node_modules)
+# Next.js 14 Production Dockerfile - Monorepo (No symlinks)
 # =============================================================================
 
 FROM node:20-alpine AS base
@@ -24,7 +24,7 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 
 # -----------------------------------------------------------------------------
-# Install production-only dependencies separately
+# Install production-only dependencies WITHOUT symlinks
 # -----------------------------------------------------------------------------
 FROM base AS prod-deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json tsconfig.base.json ./
@@ -36,7 +36,10 @@ COPY apps/api/package.json ./apps/api/package.json
 COPY packages/shared/src ./packages/shared/src
 COPY packages/shared/tsconfig.json ./packages/shared/tsconfig.json
 
-# Install prod dependencies (skip prepare script to avoid build errors)
+# CRITICAL: Use node-linker=hoisted to avoid symlinks
+RUN pnpm config set node-linker hoisted
+
+# Install prod dependencies
 RUN --mount=type=cache,id=pnpm-prod,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --prod --ignore-scripts
 
@@ -85,7 +88,7 @@ ENV HOSTNAME="0.0.0.0"
 # Copy standalone server.js and traced dependencies
 COPY --from=builder --chown=nextjs:nodejs /build/apps/web/.next/standalone ./
 
-# CRITICAL: Manually copy production node_modules
+# CRITICAL: Copy production node_modules (now without symlinks)
 COPY --from=prod-deps --chown=nextjs:nodejs /build/node_modules ./node_modules
 COPY --from=prod-deps --chown=nextjs:nodejs /build/packages/shared ./packages/shared
 
