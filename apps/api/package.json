@@ -20,7 +20,8 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "prisma db seed"
+    "prisma:seed": "prisma db seed",
+    "seed:prod": "node dist/seed.js"
   },
   "prisma": {
     "//": "Running the seed through the Prisma CLI ensures .env is loaded.",
