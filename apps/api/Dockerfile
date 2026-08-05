@@ -75,18 +75,9 @@ RUN pnpm exec prisma generate
 # Build NestJS application (creates dist/ folder)
 RUN pnpm run build
 
-# Compile the seed script to JavaScript (so it can run without ts-node in production)
-# Use explicit compiler options to ensure it works with Prisma Client and bcryptjs imports
-RUN pnpm exec tsc prisma/seed.ts \
-    --outDir dist \
-    --module commonjs \
-    --moduleResolution node \
-    --esModuleInterop \
-    --allowSyntheticDefaultImports \
-    --resolveJsonModule \
-    --skipLibCheck \
-    --target es2020 \
-    --lib es2020
+# Compile the seed script to JavaScript (using dedicated tsconfig to preserve structure)
+# This creates dist/prisma/seed.js that can run without ts-node in production
+RUN pnpm exec tsc -p tsconfig.seed.json
 
 # -----------------------------------------------------------------------------
 # Stage 4: Production Dependencies - Install only production dependencies

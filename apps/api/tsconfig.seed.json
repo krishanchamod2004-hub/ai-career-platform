@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "outDir": "./dist",
+    "rootDir": ".",
+    "sourceMap": false
+  },
+  "include": ["prisma/seed.ts"],
+  "exclude": ["src", "test", "node_modules", "dist"]
+}
