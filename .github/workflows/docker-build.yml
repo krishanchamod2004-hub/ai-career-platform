@@ -62,7 +62,8 @@ jobs:
           tags: ${{ steps.meta-api.outputs.tags }}
           labels: ${{ steps.meta-api.outputs.labels }}
           cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # cache-to temporarily disabled due to GitHub Actions cache service issues
+          # cache-to: type=gha,mode=max
           platforms: linux/amd64
 
   build-web:
