@@ -40,7 +40,7 @@ jobs:
           docker buildx build \
             --platform linux/amd64 \
             --file apps/web/Dockerfile \
-            --build-arg NEXT_PUBLIC_API_URL=https://careersuite.cc/api \
+            --build-arg NEXT_PUBLIC_API_URL=https://api.careersuite.cc/api \
             --build-arg NEXT_PUBLIC_SITE_URL=https://careersuite.cc \
             --tag ghcr.io/${{ steps.repo.outputs.repo }}-web:latest \
             --tag ghcr.io/${{ steps.repo.outputs.repo }}-web:${{ github.sha }} \
