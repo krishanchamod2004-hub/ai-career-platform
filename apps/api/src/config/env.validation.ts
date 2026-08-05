@@ -30,7 +30,34 @@ class EnvironmentVariables {
   REFRESH_TOKEN_TTL_DAYS?: number;
 
   @IsString()
+  GOOGLE_CLIENT_ID!: string;
+
+  @IsString()
+  GOOGLE_CLIENT_SECRET!: string;
+
+  @IsString()
+  GOOGLE_CALLBACK_URL!: string;
+
+  @IsString()
   WEB_URL!: string;
+
+  // --- JobSpy Scraper Sidecar -----------------------------------------------
+
+  /** Base URL of the Python JobSpy service (services/jobspy). */
+  @IsOptional()
+  @IsString()
+  JOBSPY_SERVICE_URL?: string;
+
+  /** Shared authentication token between API and JobSpy service. */
+  @IsOptional()
+  @IsString()
+  JOBSPY_API_TOKEN?: string;
+
+  /** Request timeout for JobSpy (slightly above JobSpy's own timeout). */
+  @IsOptional()
+  @IsInt()
+  @Min(1000)
+  JOBSPY_TIMEOUT_MS?: number;
 
   // --- Phase 2: queues & workers -------------------------------------------
 
