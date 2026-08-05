@@ -43,7 +43,12 @@ function LoginForm() {
     const accessToken = searchParams.get('accessToken');
     if (accessToken) {
       setIsAuthenticating(true);
-      // Fetch user profile with the access token
+      
+      // CRITICAL: Store the access token in Zustand BEFORE calling authApi.me()
+      // so the API client interceptor can attach it to the Authorization header
+      useAuthStore.getState().setAccessToken(accessToken);
+      
+      // Fetch user profile with the access token (now in store)
       authApi
         .me()
         .then((user) => {
@@ -56,6 +61,8 @@ function LoginForm() {
           console.error('Failed to fetch user after OAuth:', error);
           setServerError('Authentication failed. Please try again.');
           setIsAuthenticating(false);
+          // Clear the token on error
+          useAuthStore.getState().clearAuth();
         });
     }
   }, [searchParams, setAuth, router]);
